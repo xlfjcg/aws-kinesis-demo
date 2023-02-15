@@ -16,8 +16,6 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -26,7 +24,7 @@ import java.util.stream.Collectors;
 
 public class SimpleMysqlToStarRocks {
 
-    private static final String MYSQL_HOST = "yizhou-dms-source.xxxx.ap-southeast-1.rds.amazonaws.com";
+    private static final String MYSQL_HOST = "xxx-dms-source.xxxx.ap-southeast-1.rds.amazonaws.com";
     private static final int MYSQL_PORT = 3306;
     private static final String MYSQL_USERNAME = "admin";
     private static final String MYSQL_PASSWORD = "12345678";
@@ -35,12 +33,11 @@ public class SimpleMysqlToStarRocks {
         Properties props = new Properties();
         props.setProperty("decimal.handling.mode", "STRING");
         props.setProperty("bigint.unsigned.handling.mode", "long");
-        props.setProperty("scan.startup.mode", "initial");
         MySqlSource<String> mySqlSource = MySqlSource.<String>builder()
                 .hostname(MYSQL_HOST)
                 .port(MYSQL_PORT)
                 .databaseList("m_demo")
-                .tableList("m_demo.t_source")
+                .tableList("m_demo.t_source", "m_demo.t_source1")
                 .username(MYSQL_USERNAME)
                 .password(MYSQL_PASSWORD)
                 .startupOptions(StartupOptions.initial())
@@ -85,12 +82,16 @@ public class SimpleMysqlToStarRocks {
 
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        env.enableCheckpointing(10000);
         DataStream<String> input = createSource(env);
         input.map(new DebeziumMapFunction(primaryKeysMap))
                 .keyBy(new KeySelector<StarRocksRowData, Object>() {
                     @Override
                     public Object getKey(StarRocksRowData starRocksRowData) throws Exception {
-                        return ((DefaultStarRocksRowData) starRocksRowData).getKeyBy();
+                        String keyBy = ((DefaultStarRocksRowData) starRocksRowData).getKeyBy();
+
+                        return keyBy == null ? starRocksRowData.getRow() : keyBy;
                     }
                 })
                 .addSink(createSink());
